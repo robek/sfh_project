@@ -66,7 +66,7 @@ def knn(tch, train_s, attributes=None, k=3):
                 continue
             else:
                 break
-        if index < 3:
+        if index < k:
             neighbors.insert(index, dict([ [ key,t.get(key) ] for key in attributes.keys() ] +
                                      [ [ 'opt_ch_t_thr', t.get('opt_ch_t_thr') ]       ] ))
             neighbors.pop()
