@@ -302,8 +302,12 @@ def cross(request):
             nbs = int(data.get('nbs'))
         else:
             nbs = 3
-        k = 10
-        print "k:", k, " nbs:", nbs         
+        if 'k' in data:
+            k = int(data.get('k'))
+        else:
+            k = 10
+#        print "k:", k, " nbs:", nbs         
+        print k, " folds"
         sets = [ [] for i in range(k) ]
         i = 0
         indices = range(len(all_train)) # list of all indecies
