@@ -1,6 +1,8 @@
 from django.shortcuts import render_to_response
 from sfh.models import Train, Tide
-from math import fabs, sqrt, pow, sin, radians, pi
+from math import fabs, sqrt, pow, sin, radians, pi, exp
+from operator import mul
+import numpy as np
 from random import randint
 import matplotlib.pyplot as plt
 from itertools import combinations
@@ -32,60 +34,18 @@ from itertools import combinations
 def index(request):
     if request.method == 'GET':
         data=request.GET
+        tch = thr = None
         if 'tch' in data:
             tch = data.get('tch')
         if "thr" in data:
             thr = float(data.get('thr'))
-        result = knn(tch, Train.objects.values(), { 'throughput' : thr })           
-        return render_to_response('sfh/index.html', { 'knn' : result })
+        if thr and tch:
+            result = n_bayes(tch, Train.objects.values(), { 'throughput' : thr })
+            print "n_bayes:", result
+            print "knn: ", knn(tch, Train.objects.values(), { 'throughput' : thr})
+            return render_to_response('sfh/index.html', { 'knn' : result })
     return render_to_response('sfh/index.html')
 
-#################################################################################################
-#												#
-# knn(thr, trains, k):										#
-#  - perform k-nearest neighbor algorithm							#
-#  - argumets:											#
-#     - tch    - transmitting channel								#
-#     - trains - a traing set									#
-#     - attributes - dictionry holding values to calculate the dist				#
-#     - k      - number of nearest neigbors looking for, by default 3 				#
-#												#
-#################################################################################################
-
-def knn(tch, train_s, attributes=None, k=3):
-    neighbors = [ dict(zip(attributes.keys(), [100000 for x in range(len(attributes))])) for i in range(k)]
-    ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
-    c_x=attributes.values()
-    for t in ch_train:
-        index = k
-        for i in range(k):
-            n_x=[neighbors[k-1-i].get(x) for x in attributes.keys()] #change a dict to a vector/list
-            t_x=[t.get(x) for x in attributes.keys() ]
-            if dist(t_x, c_x) < dist(n_x, c_x):
-                index = k-1-i
-                continue
-            else:
-                break
-        if index < k:
-            neighbors.insert(index, dict([ [ key,t.get(key) ] for key in attributes.keys() ] +
-                                     [ [ 'opt_ch_t_thr', t.get('opt_ch_t_thr') ]       ] ))
-            neighbors.pop()
-    classes = [ n.get('opt_ch_t_thr') for n in neighbors ]
-    counters = [ classes.count(classes[i]) for i in range(k) ]
-#    print neighbors
-    return classes[counters.index(max(counters))]
-
-#################################################################################################
-#												#
-#  dist(x1,x2):											#
-#   - x1, x2 - lists of coordinates in N dimension space where N is len	of x1 and x2		#
-#   - returns the square root of the sums of the squares of diffrences between coordinates -	#
-#       distance from x1 to x2									#
-#												#
-#################################################################################################
-
-def dist(x1, x2):
-    return sqrt(sum( [ pow(x2[i]-x1[i],2) for i in range(len(x1)) ] ))
 #########################################################
 #							#
 # data():						#
@@ -332,8 +292,8 @@ def cross(request):
              'self_noise',  'self_snr',   'self_rssi', 
              'throughput', 'tide_level' ]
     combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
-    all_keys_combinations = [ item for sublist in combs for item in sublist ]
-#    all_keys_combinations = [('tide_level'), ('tide_level', 'throughput')]
+#    all_keys_combinations = [ item for sublist in combs for item in sublist ]
+    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')]
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
@@ -352,11 +312,13 @@ def cross(request):
             i += 1
         for keys in all_keys_combinations:
             total = 0
-            total_correct = 0
+            total_correctKNN = 0
+            total_correctNB = 0            
             for i in range(k):
                 train_s = []
                 [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
-                correct = 0
+                correctKNN = 0
+                correctNB = 0
                 for test in sets[i]:
                     attributes = dict([ [x,y] for (x,y) in test.items() \
                                         if x in keys
@@ -370,14 +332,110 @@ def cross(request):
                                       #x == 'otherSNR' or
                                     ]) # 'False' because i am to lazy to comment out 'or'
                     if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                        correct+=1
+                        correctKNN += 1
+                    if test.get('opt_ch_t_thr') == n_bayes(test.get('transmitting_channel'), train_s, attributes):
+                        correctNB += 1
                 #print i,"accuracy:\t", correct/float(len(sets[i]))
                 total += len(sets[i])
-                total_correct += correct
-            res = str(all_keys_combinations.index(keys))+" keys: "+str(keys)+" accuracy: "+str(total_correct/float(total)) 
+                total_correctKNN += correctKNN
+                total_correctNB += correctNB
+            res = str(all_keys_combinations.index(keys)) + " keys: "+str(keys) + \
+                  " knn accuracy: " + str(total_correctKNN/float(total)) + \
+                  " nb accuracy: " + str(total_correctNB/float(total))
             print res
             out.append(res)
     return render_to_response('sfh/show.html', { 'train_s' : out })
+
+#
+#
+#
+#
+
+def n_bayes(tch, train_s, attributes=None):
+    priori = dict()
+    vals_c = dict()
+    #check only the same transmitting channel
+    ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
+    vals = dict( [ (k,()) for k in attributes ] )
+    for t in ch_train: # computing the priori probablity of classes 
+        t_opt_ch = t.get('opt_ch_t_thr')
+        if not t_opt_ch in priori.keys():
+            priori[t_opt_ch] = 1 # 1 for the first occurance
+            vals_c[t_opt_ch] = vals # init vals_c[t_opt_ch]
+        else:
+            priori[t_opt_ch] = priori.get(t_opt_ch) + 1
+        #collecting values for var and mean to gausian
+        vals_c[t_opt_ch] = dict( [ ( k,vals_c[t_opt_ch].get(k) + tuple([t.get(k)]) ) for k in attributes ] )
+    #print "vals_c: \n", vals_c
+    priori = dict([ ( c, priori.get(c)/float(len(ch_train)) ) for c in priori ])
+    # means and variances for every class and every variable
+    means_vars = dict([ ( cs,
+                         dict([ (k, (np.mean(val[k]), np.var(val[k]))) for k in attributes ]) 
+                        ) for cs, val in vals_c.items() 
+                     ])
+    # computing postpriori
+    p_priori = dict([ (cs, 
+                       p * reduce(mul, [ g(means_vars[cs][k], attributes[k]) for k in attributes ] )
+                      ) for cs, p in priori.items()
+                    ])
+    p_priori = dict([ (v,k) for k,v in p_priori.items() ])
+    return p_priori[max(p_priori)]
+
+def g(m_v, x):
+    (mean, var) = m_v
+    if var:
+        return (1/sqrt(2*pi*var)) * exp((-(x-mean)**2)/(2*var))
+    elif mean == x:
+        return 1
+    else:
+        return 0
+
+#################################################################################################
+#												#
+# knn(thr, trains, k):										#
+#  - perform k-nearest neighbor algorithm							#
+#  - argumets:											#
+#     - tch    - transmitting channel								#
+#     - trains - a traing set									#
+#     - attributes - dictionry holding values to calculate the dist				#
+#     - k      - number of nearest neigbors looking for, by default 3 				#
+#												#
+#################################################################################################
+
+def knn(tch, train_s, attributes=None, k=3):
+    neighbors = [ dict(zip(attributes.keys(), [100000 for x in range(len(attributes))])) for i in range(k)]
+    ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
+    c_x=attributes.values()
+    for t in ch_train:
+        index = k
+        for i in range(k):
+            n_x=[neighbors[k-1-i].get(x) for x in attributes.keys()] #change a dict to a vector/list
+            t_x=[t.get(x) for x in attributes.keys() ]
+            if dist(t_x, c_x) < dist(n_x, c_x):
+                index = k-1-i
+                continue
+            else:
+                break
+        if index < k:
+            neighbors.insert(index, dict([ [ key,t.get(key) ] for key in attributes.keys() ] +
+                                     [ [ 'opt_ch_t_thr', t.get('opt_ch_t_thr') ]       ] ))
+            neighbors.pop()
+    classes = [ n.get('opt_ch_t_thr') for n in neighbors ]
+    counters = [ classes.count(classes[i]) for i in range(k) ]
+#    print neighbors
+    return classes[counters.index(max(counters))]
+
+#################################################################################################
+#												#
+#  dist(x1,x2):											#
+#   - x1, x2 - lists of coordinates in N dimension space where N is len	of x1 and x2		#
+#   - returns the square root of the sums of the squares of diffrences between coordinates -	#
+#       distance from x1 to x2									#
+#												#
+#################################################################################################
+
+def dist(x1, x2):
+    return sqrt(sum( [ pow(x2[i]-x1[i],2) for i in range(len(x1)) ] ))
 
 #########################################################################
 #									#
@@ -397,8 +455,8 @@ def show(request):
 
 #    data = "@DATA\n"
 #    str = relation+timestamp+frequency+throughput+tide+opt+data
-    str = "abc"
-    return render_to_response('sfh/show.html', { 'train_s' : str })#, 'arff' : str} )
+#    str = "abc"
+    return render_to_response('sfh/show.html', { 'train_s' : Train.objects.all() })#, 'arff' : str} )
 
 def graph(request):
     train_s = Train.objects.all()
