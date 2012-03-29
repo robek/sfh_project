@@ -6,7 +6,7 @@ import numpy as np
 from random import randint
 import matplotlib.pyplot as plt
 from itertools import combinations
-
+from time import time
 #
 # To-Do on thursday(23.02):
 #    - proper knn with different k's (done :) )
@@ -292,8 +292,8 @@ def cross(request):
              'self_noise',  'self_snr',   'self_rssi', 
              'throughput', 'tide_level' ]
     combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
-#    all_keys_combinations = [ item for sublist in combs for item in sublist ]
-    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')]
+    all_keys_combinations = [ item for sublist in combs for item in sublist ]
+#    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
@@ -313,35 +313,42 @@ def cross(request):
         for keys in all_keys_combinations:
             total = 0
             total_correctKNN = 0
-            total_correctNB = 0            
+            total_correctNB = 0
+            total_elapsedNB = 0
+            total_elapsedKNN = 0
             for i in range(k):
                 train_s = []
                 [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
                 correctKNN = 0
                 correctNB = 0
+                elapsedKNN = 0
+                elapsedNB = 0
                 for test in sets[i]:
-                    attributes = dict([ [x,y] for (x,y) in test.items() \
-                                        if x in keys
-                                      #x == 'throughput' or  
-                                      #x == 'tide_level' or 
-                                      #x == 'self_noise' or 
-                                      #x == 'other_noise' or
-                                      #x == 'other_rssi' or
-                                      #x == 'self_rssi' #or
-                                      #x == 'selfSNR' or
-                                      #x == 'otherSNR' or
-                                    ]) # 'False' because i am to lazy to comment out 'or'
-                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                        correctKNN += 1
+                    attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
+
+                    #start = time()
+                    #if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+                    #    correctKNN += 1
+                    #elapsedKNN += (time() - start)
+
+                    start = time()
                     if test.get('opt_ch_t_thr') == n_bayes(test.get('transmitting_channel'), train_s, attributes):
                         correctNB += 1
-                #print i,"accuracy:\t", correct/float(len(sets[i]))
+                    elapsedNB += (time() - start)
+
+                #print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
+                print i,"- nb accuracy:\t", correctNB/float(len(sets[i])), " time: ", elapsedNB
                 total += len(sets[i])
-                total_correctKNN += correctKNN
+                #total_correctKNN += correctKNN
                 total_correctNB += correctNB
+                total_elapsedNB += elapsedNB
+                #total_elapsedKNN += elapsedKNN
             res = str(all_keys_combinations.index(keys)) + " keys: "+str(keys) + \
-                  " knn accuracy: " + str(total_correctKNN/float(total)) + \
-                  " nb accuracy: " + str(total_correctNB/float(total))
+                  " nb accuracy: " + str(total_correctNB/float(total)) + \
+                  " avg time per fold: " total_elapsedNB/float(k)
+                 # " knn accuracy: " + str(total_correctKNN/float(total)) + \
+                 # " avg time per fold: " total_elapsedKNN/float(k)
+
             print res
             out.append(res)
     return render_to_response('sfh/show.html', { 'train_s' : out })
@@ -364,13 +371,13 @@ def n_bayes(tch, train_s, attributes=None):
             vals_c[t_opt_ch] = vals # init vals_c[t_opt_ch]
         else:
             priori[t_opt_ch] = priori.get(t_opt_ch) + 1
-        #collecting values for var and mean to gausian
+        #collecting values for var and mean to gausian, for each class
         vals_c[t_opt_ch] = dict( [ ( k,vals_c[t_opt_ch].get(k) + tuple([t.get(k)]) ) for k in attributes ] )
     #print "vals_c: \n", vals_c
     priori = dict([ ( c, priori.get(c)/float(len(ch_train)) ) for c in priori ])
     # means and variances for every class and every variable
     means_vars = dict([ ( cs,
-                         dict([ (k, (np.mean(val[k]), np.var(val[k]))) for k in attributes ]) 
+                         dict([ (k, (np.mean(val[k]), np.var(val[k], ddof=1))) for k in attributes ]) 
                         ) for cs, val in vals_c.items() 
                      ])
     # computing postpriori
@@ -386,6 +393,7 @@ def g(m_v, x):
     if var:
         return (1/sqrt(2*pi*var)) * exp((-(x-mean)**2)/(2*var))
     elif mean == x:
+        print "var equal 0! mean: ", mean
         return 1
     else:
         return 0
