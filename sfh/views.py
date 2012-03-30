@@ -308,9 +308,11 @@ def cross(request):
         for keys in all_keys_combinations:
             total = 0
             total_correctKNN = 0
-            total_correctNB = 0
-            total_elapsedNB = 0
+            total_correctNBB = 0
+            total_correctNBG = 0
             total_elapsedKNN = 0
+            total_elapsedNBB = 0
+            total_elapsedNBG = 0
             res = str(all_keys_combinations.index(keys)+1) + " keys: " + str(keys)
             print res
             # for all the fold in k-fold cross validation
@@ -319,9 +321,12 @@ def cross(request):
                 train_s = []
                 [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
                 correctKNN = 0
-                correctNB = 0
+                correctNBB = 0
+                correctNBG = 0
                 elapsedKNN = 0
-                elapsedNB = 0
+                elapsedNBB = 0
+                elapsedNBG = 0
+
                 for test in sets[i]:
                     # using only the attributes/features specified in all_keys_combinations list 
                     attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
@@ -335,43 +340,43 @@ def cross(request):
                     # measuring the time and accuracy of Discretize Naive Bayes classifier
                     start = time()
                     if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes):
-                        correctNB += 1
+                        correctNBB += 1
                     elapsedNBB += (time() - start)
 
                     # measuring the time and accuracy of Continous Naive Bayes classifier
                     start = time()
                     if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
-                        correctNB += 1
+                        correctNBG += 1
                     elapsedNBG += (time() - start)
 
                 #printing the results for each fold
                 print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
-                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNB
-                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNB
+                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
+                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
 
                 total += len(sets[i])
                 total_correctKNN += correctKNN
-                total_correctNBG += correctNB
-                total_correctNBB += correctNB
+                total_correctNBG += correctNBG
+                total_correctNBB += correctNBB
                 total_elapsedNBB += elapsedNBB
                 total_elapsedNBG += elapsedNBG
                 total_elapsedKNN += elapsedKNN
             # adding final results to res variable which will be printed in the browser
             res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + \
-                   " avg time per fold: " + str(total_elapsedNBG/float(k)) +
+                   " avg time per fold: " + str(total_elapsedNBG/float(k)) + \
                    " nb_bins accuracy: " + str(total_correctNBB/float(total)) + \
-                   " avg time per fold: " + str(total_elapsedNBB/float(k)) +
+                   " avg time per fold: " + str(total_elapsedNBB/float(k)) + \
                    " knn accuracy: " + str(total_correctKNN/float(total)) + \
-                   " avg time per fold: " str(total_elapsedKNN/float(k))
+                   " avg time per fold: " + str(total_elapsedKNN/float(k))
             out.append(res)
 
             # and printing final result to terminal
-            print "nb_gauss accuracy: ", total_correctNBG/float(total),
-                  "\navg time per fold: ", total_elapsedNBG/float(k),
-                  "\nnb_bins accuracy: ", total_correctNBB/float(total),
-                  "\navg time per fold: ",total_elapsedNBB/float(k),
-                  "\nknn accuracy: ", total_correctKNN/float(total),
-                  "\navg time per fold: ", total_elapsedKNN/float(k)
+            print "nb_gauss accuracy: ", total_correctNBG/float(total), \
+                  "\navg time per fold: ", total_elapsedNBG/float(k), \
+                  "\nnb_bins accuracy: ", total_correctNBB/float(total), \
+                  "\navg time per fold: ",total_elapsedNBB/float(k), \
+                  "\nknn accuracy: ", total_correctKNN/float(total), \
+                  "\navg time per fold: ", total_elapsedKNN/float(k) 
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
 #################################################################################
@@ -386,7 +391,7 @@ def cross(request):
 #										#
 #################################################################################
 
-def n_bayes_bins(tch, train_s, attributes=None, bins=200):
+def n_bayes_bins(tch, train_s, attributes=None, bins=500):
     priori = dict()
     vals_c = dict()
     #check only the same transmitting channel
