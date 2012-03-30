@@ -1,26 +1,11 @@
 from django.shortcuts import render_to_response
 from sfh.models import Train, Tide
-from math import fabs, sqrt, pow, sin, radians, pi, exp
-from operator import mul
+from math import fabs, sqrt, pow, sin, radians, pi, exp, log
 import numpy as np
 from random import randint
 import matplotlib.pyplot as plt
 from itertools import combinations
 from time import time
-#
-# To-Do on thursday(23.02):
-#    - proper knn with different k's (done :) )
-#    - check accuracy - cross-validation (done :) )
-#######################################################
-# To-Do on Friday(24.02):
-#    - knn - add tide level to distance measuring
-#    - find accurate tide level information
-########################################################
-# To-Do on Monday(27.02):
-#    - Meeting with Mahesh - 4.30pm, ask: Tide level 
-#      training
-#
-
 
 #########################################################################
 # 									#
@@ -28,6 +13,7 @@ from time import time
 #  - send the data that needs to be classified in GET request:		#
 #     - tch - transmitting channel 					#
 #     - thr - throughput of tch						#
+# -TO-DO: add other feature check from GET request			#
 #									#
 #########################################################################
 
@@ -40,10 +26,10 @@ def index(request):
         if "thr" in data:
             thr = float(data.get('thr'))
         if thr and tch:
-            result = n_bayes(tch, Train.objects.values(), { 'throughput' : thr })
-            print "n_bayes:", result
-            print "knn: ", knn(tch, Train.objects.values(), { 'throughput' : thr})
-            return render_to_response('sfh/index.html', { 'knn' : result })
+           # result = n_bayes_gauss(tch, Train.objects.values(), { 'throughput' : thr })
+           # print "n_bayes:", result
+            print "knn:\n", knn(tch, Train.objects.values(), { 'throughput' : thr})
+           # return render_to_response('sfh/index.html', { 'knn' : result })
     return render_to_response('sfh/index.html')
 
 #########################################################
@@ -63,9 +49,11 @@ def index(request):
 def data(request):
     if request.method == 'GET':
         data = request.GET
+        # checing if all required values are in the get request
         logic = 'ts' in data and 'tch' in data and "thr" in data and 'ssnr' in data 
         logic = logic and 'snoise' in data and 'osnr' in data and 'onoise' in data
         if logic:
+            # retrieving the values
             timestamp = (data.get('ts'))
             transmitting_channel = (data.get('tch'))
             throughput = (data.get('thr'))
@@ -75,6 +63,7 @@ def data(request):
             other_snr = float(data.get('osnr'))/float(100)
             other_noise = float(data.get('onoise'))/float(100)
             other_rssi = other_snr+other_noise
+            # preparing the data to be saved
             line = Train(timestamp=timestamp, 
                          transmitting_channel=transmitting_channel,
                          throughput=throughput,
@@ -84,6 +73,7 @@ def data(request):
                          other_snr=other_snr,
                          other_noise=other_noise,
                          other_rssi=other_rssi)
+            # this save is modified in models.py to discard all entries that noise or snr are 0
             line.save()
             return render_to_response('sfh/data.html', {'data' : line})
     return render_to_response('sfh/data.html')
@@ -103,6 +93,7 @@ def tide(request):
         data=request.GET
         if 'ts' in data and 'tide' in data:
             ts = int(data.get('ts'))
+            # storing the hight value in meters 
             h = float(data.get('tide'))/100
             line = Tide(timestamp=ts, height=h)
             line.save()
@@ -112,13 +103,9 @@ def tide(request):
 #########################################################################################
 #											#
 # mix(request):										#
-#  - assuming that tide behaviour is linear, computing the height of tide between two 	#
-#    entries in Tide db									#
-#  - To-Do: use sin interpolation(done),						#
-#  - Can add GET variables to use diff approximation					#
-#											#
-#											#
-#  A*sin(B*(x - C)) + D = y 								#
+#  - computing the height of tide between two entries in Tide table 			#   
+#  - using sin interpolation:								#
+#  	A*sin(B*(x - C)) + D = y 							#
 #											#
 #											#
 #											#
@@ -149,11 +136,12 @@ def mix(request):
     return render_to_response('sfh/mix.html', {'trains' : all_trains})
 
 ###########################################################################################################
-#	Don't use it!!											  #
+#													  #
 # dummy(request):											  #
 #  - adding dummy entries so total numeber of entries is a multiply of number of channels used		  #
 #    but is adding a 0 throughput is the best idea? maybe should add -1 throughput or -infinity throghput #
-#  													  #
+#  - Produce the weak results so DO NOT use it!								  #
+#													  #
 ###########################################################################################################
 
 def dummy(request):
@@ -189,9 +177,6 @@ def dummy(request):
 #  - for every slot check which channel has the best throughput and set all optimal channels	#
 #  in this slot to this channel									#
 #  - To-Do: Different time slots of max length of len(CHANNELS) (done!)				#
-#-----------------------------------------------------------------------------------------------#
-#  - To-Do: in get var what kind of train is needed - tide or throughput			#
-#  talk with mahesh about tide training								#
 #												#
 #################################################################################################
 
@@ -217,6 +202,7 @@ def train(request):
         if not entry.transmitting_channel in t_channels:
             t_channels.append(entry.transmitting_channel)
             slot.append(entry)
+            # looking for the best thr, self/other snr, self/other rssi
             if entry.throughput > thr:
                 thr = entry.throughput
                 ch_t = entry.transmitting_channel
@@ -233,6 +219,7 @@ def train(request):
                 orssi = entry.other_rssi
                 ch_orssi = entry.transmitting_channel
         else:
+            # saving optimal channels and their performance
             for t in slot:
                 t.opt_ch_t_thr = ch_t
                 t.opt_ch_thr = thr
@@ -257,7 +244,7 @@ def train(request):
             ch_srssi = entry.transmitting_channel
             ch_orssi = entry.transmitting_channel
             ch_osnr = entry.transmitting_channel
-
+        # printing the current status of training
         if counter % 20 == 0:
             print len(train_s)-counter, "left"
         counter += 1
@@ -287,13 +274,15 @@ def train(request):
 #########################################################################################
 
 def cross(request):
-    CHANNELS = [ 5.18, 5.26, 5.32, 5.5, 5.6, 5.7, 5.745, 5.785, 5.825 ]
+    # attributes/features that charaterize the link
     KEYS = [ 'other_noise', 'other_rssi', 'other_snr', 
              'self_noise',  'self_snr',   'self_rssi', 
              'throughput', 'tide_level' ]
+    # getting all possible features combinations 
     combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
-    all_keys_combinations = [ item for sublist in combs for item in sublist ]
-#    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
+    #flatting the list of lists of tuples to list of tuples
+    #all_keys_combinations = [ item for sublist in combs for item in sublist ] 
+    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
@@ -307,20 +296,26 @@ def cross(request):
         else:
             k = 10
 #        print "k:", k, " nbs:", nbs         
-        print k, " folds"
+        print k, " folds, NB log gauss "
         sets = [ [] for i in range(k) ]
         i = 0
         indices = range(len(all_train)) # list of all indecies
+        # randomly deviding training set into k folds/set
         while indices:
             sets[i%k].append(all_train[indices.pop(randint(0,len(indices)-1))])
             i += 1
+        # checking all keys/attributes from all_keys_combination list
         for keys in all_keys_combinations:
             total = 0
             total_correctKNN = 0
             total_correctNB = 0
             total_elapsedNB = 0
             total_elapsedKNN = 0
+            res = str(all_keys_combinations.index(keys)+1) + " keys: " + str(keys)
+            print res
+            # for all the fold in k-fold cross validation
             for i in range(k):
+                # making a training set - merging other, not testing folds
                 train_s = []
                 [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
                 correctKNN = 0
@@ -328,41 +323,121 @@ def cross(request):
                 elapsedKNN = 0
                 elapsedNB = 0
                 for test in sets[i]:
+                    # using only the attributes/features specified in all_keys_combinations list 
                     attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
 
-                    #start = time()
-                    #if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                    #    correctKNN += 1
-                    #elapsedKNN += (time() - start)
-
+                    # measuring the time and accuracy of knn classifier
                     start = time()
-                    if test.get('opt_ch_t_thr') == n_bayes(test.get('transmitting_channel'), train_s, attributes):
+                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+                        correctKNN += 1
+                    elapsedKNN += (time() - start)
+
+                    # measuring the time and accuracy of Discretize Naive Bayes classifier
+                    start = time()
+                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes):
                         correctNB += 1
-                    elapsedNB += (time() - start)
+                    elapsedNBB += (time() - start)
 
-                #print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
-                print i,"- nb accuracy:\t", correctNB/float(len(sets[i])), " time: ", elapsedNB
+                    # measuring the time and accuracy of Continous Naive Bayes classifier
+                    start = time()
+                    if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
+                        correctNB += 1
+                    elapsedNBG += (time() - start)
+
+                #printing the results for each fold
+                print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
+                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNB
+                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNB
+
                 total += len(sets[i])
-                #total_correctKNN += correctKNN
-                total_correctNB += correctNB
-                total_elapsedNB += elapsedNB
-                #total_elapsedKNN += elapsedKNN
-            res = str(all_keys_combinations.index(keys)) + " keys: "+str(keys) + \
-                  " nb accuracy: " + str(total_correctNB/float(total)) + \
-                  " avg time per fold: " total_elapsedNB/float(k)
-                 # " knn accuracy: " + str(total_correctKNN/float(total)) + \
-                 # " avg time per fold: " total_elapsedKNN/float(k)
-
-            print res
+                total_correctKNN += correctKNN
+                total_correctNBG += correctNB
+                total_correctNBB += correctNB
+                total_elapsedNBB += elapsedNBB
+                total_elapsedNBG += elapsedNBG
+                total_elapsedKNN += elapsedKNN
+            # adding final results to res variable which will be printed in the browser
+            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + \
+                   " avg time per fold: " + str(total_elapsedNBG/float(k)) +
+                   " nb_bins accuracy: " + str(total_correctNBB/float(total)) + \
+                   " avg time per fold: " + str(total_elapsedNBB/float(k)) +
+                   " knn accuracy: " + str(total_correctKNN/float(total)) + \
+                   " avg time per fold: " str(total_elapsedKNN/float(k))
             out.append(res)
+
+            # and printing final result to terminal
+            print "nb_gauss accuracy: ", total_correctNBG/float(total),
+                  "\navg time per fold: ", total_elapsedNBG/float(k),
+                  "\nnb_bins accuracy: ", total_correctNBB/float(total),
+                  "\navg time per fold: ",total_elapsedNBB/float(k),
+                  "\nknn accuracy: ", total_correctKNN/float(total),
+                  "\navg time per fold: ", total_elapsedKNN/float(k)
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
-#
-#
-#
-#
+#################################################################################
+#										#
+# n_bayes_bins(tch, train_s, attributes, bins):					#
+#   - tch - current transmitting channel					#
+#   - train set - to be filtered with tch					#
+#   - attributes - dictionary of variables charaterizing X to classify		#
+#   - number of bins to use in discretization the countinous variables		#
+# Discretize the countinues variables and perform Naive Bayes classification.	#
+# Returns the most probable optimal channel					#
+#										#
+#################################################################################
 
-def n_bayes(tch, train_s, attributes=None):
+def n_bayes_bins(tch, train_s, attributes=None, bins=200):
+    priori = dict()
+    vals_c = dict()
+    #check only the same transmitting channel
+    ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
+    vals = dict([ (k,()) for k in attributes ])
+    min_max = dict([ (k,(10000,-10000)) for k in attributes ])
+    for t in ch_train: # computing the priori probablity of classes 
+        t_opt_ch = t.get('opt_ch_t_thr')
+        if not t_opt_ch in priori.keys():
+            priori[t_opt_ch] = 1 # 1 for the first occurance
+            vals_c[t_opt_ch] = vals # init vals_c[t_opt_ch]
+        else:
+            priori[t_opt_ch] = priori.get(t_opt_ch) + 1
+        #collecting values for latter discretization, for each class
+        vals_c[t_opt_ch] = dict( [ ( k,vals_c[t_opt_ch].get(k) + tuple([t.get(k)]) ) for k in attributes ] )
+        #mins and maxes for computing the bins size
+        min_max = dict([ (k, (min(mn, t.get(k)), max(mx,t.get(k)))) for k,(mn,mx) in min_max.items() ])
+    bin_size = dict([ (k, (mx-mn)/float(bins)) for k,(mn,mx) in min_max.items() ])
+    priori = dict([ ( c, occ/float(len(ch_train)) ) for c,occ in priori.items() ])
+    # discretization all continous variables
+    dis_vals = dict([
+                     (c,dict([ 
+                              (k,tuple([int((x-min_max[k][0])/bin_size[k]) for x in xs ]) ) 
+                              for k,xs in attr.items() 
+                             ]) )
+                     for c, attr in vals_c.items()
+                   ])
+    # computing the log posterior
+    p_priori = dict([
+                     (c, log(p) + sum([ log((dis_vals[c][k].count(x)+1)/float(len(dis_vals[c][k])+bins))
+                                           for k,x in attributes.items()]))
+                     for c,p in priori.items()
+                    ])
+    # switching keys with values and values with keys
+    p_priori = dict([ (v,k) for k,v in p_priori.items() ])
+    return p_priori[max(p_priori)]
+
+
+#################################################################################
+#										#
+# n_bayes_gauss(tch, train_s, attributes):					#
+#   - tch - current transmitting channel					#
+#   - train set - to be filtered with tch					#
+#   - attributes - dictionary of variables charaterizing X to classify		#
+# Performs Naive Bayes classification on continous variables using Gaussian.	#
+# Returns the most probable optimal channel					#
+#										#
+#################################################################################
+
+
+def n_bayes_gauss(tch, train_s, attributes=None):
     priori = dict()
     vals_c = dict()
     #check only the same transmitting channel
@@ -384,21 +459,47 @@ def n_bayes(tch, train_s, attributes=None):
                          dict([ (k, (np.mean(val[k]), np.var(val[k], ddof=1))) for k in attributes ]) 
                         ) for cs, val in vals_c.items() 
                      ])
-    # computing postpriori
+    # computing log posteriori
     p_priori = dict([ (cs, 
-                       p * reduce(mul, [ g(means_vars[cs][k], attributes[k]) for k in attributes ] )
+                       log(p) + sum([ log_g(means_vars[cs][k], attributes[k]) for k in attributes ])
+#                       p * reduce(mul, [ g(means_vars[cs][k], attributes[k]) for k in attributes ] )
                       ) for cs, p in priori.items()
                     ])
     p_priori = dict([ (v,k) for k,v in p_priori.items() ])
     return p_priori[max(p_priori)]
+
+#################################################################
+#								#
+# g(m_v, x):							#
+#  - m_v - tuple containing mean and variance			#
+#  - x - varialbe x						#
+# returns the f(x;m,v) = 1/sqrt(2*pi*v) * exp(-(x-m)^2/(2*v))	#
+#								#
+#################################################################
 
 def g(m_v, x):
     (mean, var) = m_v
     if var:
         return (1/sqrt(2*pi*var)) * exp((-(x-mean)**2)/(2*var))
     elif mean == x:
-        print "var equal 0! mean: ", mean
         return 1
+    else:
+        return 0
+
+#################################################################
+#								#
+# log_g(m_v, x):						#
+#  - m_v - tuple containing mean and variance			#
+#  - x - varialbe x						#
+# returns the log(f(x;m,v)) = -=.5log(2*pi*v) - (x-m)^2/(2*v)	#
+#								#
+#################################################################
+
+
+def log_g(m_v, x):
+    (mean, var) = m_v
+    if var:
+        return -0.5*log(2*pi*var) - ((x-mean)**2)/(2*var)
     else:
         return 0
 
@@ -415,26 +516,23 @@ def g(m_v, x):
 #################################################################################################
 
 def knn(tch, train_s, attributes=None, k=3):
-    neighbors = [ dict(zip(attributes.keys(), [100000 for x in range(len(attributes))])) for i in range(k)]
+    neighbors = dict()
     ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
+    # list of all features to a X to be classify
     c_x=attributes.values()
     for t in ch_train:
-        index = k
-        for i in range(k):
-            n_x=[neighbors[k-1-i].get(x) for x in attributes.keys()] #change a dict to a vector/list
-            t_x=[t.get(x) for x in attributes.keys() ]
-            if dist(t_x, c_x) < dist(n_x, c_x):
-                index = k-1-i
-                continue
-            else:
-                break
-        if index < k:
-            neighbors.insert(index, dict([ [ key,t.get(key) ] for key in attributes.keys() ] +
-                                     [ [ 'opt_ch_t_thr', t.get('opt_ch_t_thr') ]       ] ))
-            neighbors.pop()
-    classes = [ n.get('opt_ch_t_thr') for n in neighbors ]
+        t_x = [ t.get(x) for x in attributes.keys() ]
+        dis = dist(t_x,c_x)
+        # adding small, insignificat distance to ensure that no previous value was replaced
+        while(neighbors.has_key(dis)):
+            dis += 0.000000001
+        # storing the all the distances and optimals channel in dictionary
+        neighbors[dis] = t.get('opt_ch_t_thr')
+    neighbors_items = neighbors.items()
+    neighbors_items.sort()
+    # retrieving k nearest neighbors
+    classes = [ neighbors_items[i][1] for i in range(k) ]
     counters = [ classes.count(classes[i]) for i in range(k) ]
-#    print neighbors
     return classes[counters.index(max(counters))]
 
 #################################################################################################
@@ -457,18 +555,8 @@ def dist(x1, x2):
 #########################################################################
 
 def show(request):
-    #string for arff file
-#    relation = "@RELATION tide_level\n\n"
-#    timestamp = "@ATTRIBUTE timestamp NUMERIC\n"
-#    frequency = "@ATTRIBUTE frequency	{5.18,5.26,5.32,5.5,5.6,5.7,5.745,5.785,5.825}\n"
-#    throughput = "@ATTRIBUTE throughput	NUMERIC\n"
-#    tide = "@ATTRIBUTE tide	NUMERIC\n"
-#    opt = "@ATTRIBUTE opt	{5.18,5.26,5.32,5.5,5.6,5.7,5.745,5.785,5.825}\n\n\n"
+    return render_to_response('sfh/show.html', { 'train_s' : Train.objects.all() })
 
-#    data = "@DATA\n"
-#    str = relation+timestamp+frequency+throughput+tide+opt+data
-#    str = "abc"
-    return render_to_response('sfh/show.html', { 'train_s' : Train.objects.all() })#, 'arff' : str} )
 
 def graph(request):
     train_s = Train.objects.all()
@@ -719,7 +807,8 @@ def graph(request):
 #     pair of transmitting channel in terms of throughput, SNR(self and other)	#
 #     and RSSI(self and other) and prints the result in a form o table/matrix 	#
 #     of 9x9 size								#
-#   - the result should be seen in both browser and terminal (server log screen	#
+#   - the result should be seen in both browser and terminal (server log screen)#
+#     - currently only in terminal
 #										#
 #################################################################################
 
@@ -761,7 +850,6 @@ def pearson(request):
     pearson_orssi = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
     pearson_onoise = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
     pearson_snoise = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_tide = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
 
     for i in range(len(values)):
         n = len(values[i])
@@ -816,17 +904,6 @@ def pearson(request):
         sumy2 = sum([ pow(v.get('y').get('throughput'),2) for v in values[i] ])
         pearson_snoise[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
   
-        #pearson tide to throughput
-        sumxy = sum([v.get('x').get('tide_level') * v.get('y').get('throughput') for v in values[i] ])
-        sumx = sum([ v.get('x').get('tide_level') for v in values[i] ])
-        sumy = sum([ v.get('y').get('throughput') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('tide_level'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('throughput'),2) for v in values[i] ])
-        pearson_tide[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
-
- 
-
-
     STR = ""
     for i in range(len(pearson_thr)):
         if i % len(CHANNELS) == 0:
@@ -873,13 +950,5 @@ def pearson(request):
         STR += str(round(pearson_snoise[i],3)) + "\t"
     print "Pearson for self noise/throughput:" + STR
 
-
-    STR = ""
-    for i in range(len(pearson_tide)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_tide[i],3)) + "\t"
-    print "Pearson for tide level/throughput:" + STR
-
-
     return render_to_response('sfh/index.html')
+

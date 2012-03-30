@@ -1,6 +1,7 @@
 from django.db import models
 
 # Database:
+#
 # Train :
 # ____________________________________________________________________________________________________________
 # |             |              |             |             |             |      |      |       |      |      |
@@ -16,6 +17,15 @@ from django.db import models
 # | for optimal | for optimal  | for optimal | for optimal | for optimal |
 # | channel     | channel      | channel     | channel     | channel     |
 # ------------------------------------------------------------------------
+#
+# Tide:
+# ________________________
+# |             |        |
+# | timestamp   | height | 
+# |             |        |
+# ------------------------
+#
+
 class Train(models.Model):
     timestamp = models.IntegerField()
 
@@ -44,7 +54,7 @@ class Train(models.Model):
     opt_ch_t_orssi = models.FloatField(null=True)
     opt_ch_orssi = models.FloatField(null=True)
 
-    # printing
+    # define the default printing pattern
     def __unicode__(self):
         ret = str(self.timestamp) + " " + str(self.transmitting_channel) + " " + str(self.throughput) + " "
         ret += str(self.self_snr) + " " + str(self.self_noise) + " " 
@@ -70,10 +80,12 @@ class Train(models.Model):
             ret += " " + str(self.opt_ch_orssi)
         return ret
 
+    # discard the entry when other/self snr or other/self noise are 0
     def save(self, *args, **kwargs):
         if self.self_snr and self.self_noise and self.other_snr and self.other_noise:
             super(Train, self).save(*args, **kwargs)
 
+    # define the default ordering when retrieving the entries
     class Meta:
         ordering = ['timestamp']
 
@@ -81,8 +93,10 @@ class Tide(models.Model):
     timestamp=models.IntegerField()
     height=models.FloatField()
 
+    # define the default printing pattern
     def __unicode__(self):
         return str(self.timestamp) + " " + str(self.height)
 
+    # define the default ordering when retrieving the entries
     class Meta:
         ordering = ['timestamp']
