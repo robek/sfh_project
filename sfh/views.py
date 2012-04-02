@@ -26,9 +26,9 @@ def index(request):
         if "thr" in data:
             thr = float(data.get('thr'))
         if thr and tch:
-           # result = n_bayes_gauss(tch, Train.objects.values(), { 'throughput' : thr })
-           # print "n_bayes:", result
-            print "knn:\n", knn(tch, Train.objects.values(), { 'throughput' : thr})
+            result = n_bayes_bins(tch, Train.objects.values(), { 'throughput' : thr })
+            print "n_bayes_bins:", result
+           # print "knn:\n", knn(tch, Train.objects.values(), { 'throughput' : thr})
            # return render_to_response('sfh/index.html', { 'knn' : result })
     return render_to_response('sfh/index.html')
 
@@ -281,22 +281,29 @@ def cross(request):
     # getting all possible features combinations 
     combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
     #flatting the list of lists of tuples to list of tuples
-    #all_keys_combinations = [ item for sublist in combs for item in sublist ] 
-    all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
+    all_keys_combinations = [ item for sublist in combs for item in sublist ] 
+    #all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
         data=request.GET
+        # numbr of negihbors to consider
         if 'nbs' in data:
             nbs = int(data.get('nbs'))
         else:
             nbs = 3
+        # number of bins for discretization
+        if 'bins' in data:
+            bins = int(data.get('bins'))
+        else:
+            bins = 50
+        # number of folds in k-fold cross validation
         if 'k' in data:
             k = int(data.get('k'))
         else:
             k = 10
-#        print "k:", k, " nbs:", nbs         
-        print k, " folds, NB log gauss "
+        print "NB_b"
+        print "k:", k, " nbs:", nbs, " bins: ", bins
         sets = [ [] for i in range(k) ]
         i = 0
         indices = range(len(all_train)) # list of all indecies
@@ -332,27 +339,27 @@ def cross(request):
                     attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
 
                     # measuring the time and accuracy of knn classifier
-                    start = time()
-                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                        correctKNN += 1
-                    elapsedKNN += (time() - start)
-
+#                    start = time()
+#                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+#                        correctKNN += 1
+#                    elapsedKNN += (time() - start)
+                    
                     # measuring the time and accuracy of Discretize Naive Bayes classifier
                     start = time()
-                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes):
+                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
                         correctNBB += 1
                     elapsedNBB += (time() - start)
 
                     # measuring the time and accuracy of Continous Naive Bayes classifier
-                    start = time()
-                    if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
-                        correctNBG += 1
-                    elapsedNBG += (time() - start)
-
+#                    start = time()
+#                    if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
+#                        correctNBG += 1
+#                    elapsedNBG += (time() - start)
+                    
                 #printing the results for each fold
-                print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
-                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
-                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
+#                print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
+#                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
+#                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
 
                 total += len(sets[i])
                 total_correctKNN += correctKNN
@@ -362,26 +369,22 @@ def cross(request):
                 total_elapsedNBG += elapsedNBG
                 total_elapsedKNN += elapsedKNN
             # adding final results to res variable which will be printed in the browser
-            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + \
-                   " avg time per fold: " + str(total_elapsedNBG/float(k)) + \
-                   " nb_bins accuracy: " + str(total_correctNBB/float(total)) + \
-                   " avg time per fold: " + str(total_elapsedNBB/float(k)) + \
-                   " knn accuracy: " + str(total_correctKNN/float(total)) + \
-                   " avg time per fold: " + str(total_elapsedKNN/float(k))
+#            res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
+#            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
+            res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
+
             out.append(res)
 
             # and printing final result to terminal
-            print "nb_gauss accuracy: ", total_correctNBG/float(total), \
-                  "\navg time per fold: ", total_elapsedNBG/float(k), \
-                  "\nnb_bins accuracy: ", total_correctNBB/float(total), \
-                  "\navg time per fold: ",total_elapsedNBB/float(k), \
-                  "\nknn accuracy: ", total_correctKNN/float(total), \
-                  "\navg time per fold: ", total_elapsedKNN/float(k) 
+#            print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
+#            print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
+            print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
+
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
 #################################################################################
 #										#
-# n_bayes_bins(tch, train_s, attributes, bins):					#
+# n_bayes_bins(tch, train_s, attributes, bins=100 ):				#
 #   - tch - current transmitting channel					#
 #   - train set - to be filtered with tch					#
 #   - attributes - dictionary of variables charaterizing X to classify		#
@@ -391,13 +394,13 @@ def cross(request):
 #										#
 #################################################################################
 
-def n_bayes_bins(tch, train_s, attributes=None, bins=500):
+def n_bayes_bins(tch, train_s, attributes=None, bins=100):
     priori = dict()
     vals_c = dict()
     #check only the same transmitting channel
     ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
     vals = dict([ (k,()) for k in attributes ])
-    min_max = dict([ (k,(10000,-10000)) for k in attributes ])
+    min_max = dict([ (k,(x,x)) for k,x in attributes.items() ])
     for t in ch_train: # computing the priori probablity of classes 
         t_opt_ch = t.get('opt_ch_t_thr')
         if not t_opt_ch in priori.keys():
@@ -411,18 +414,20 @@ def n_bayes_bins(tch, train_s, attributes=None, bins=500):
         min_max = dict([ (k, (min(mn, t.get(k)), max(mx,t.get(k)))) for k,(mn,mx) in min_max.items() ])
     bin_size = dict([ (k, (mx-mn)/float(bins)) for k,(mn,mx) in min_max.items() ])
     priori = dict([ ( c, occ/float(len(ch_train)) ) for c,occ in priori.items() ])
-    # discretization all continous variables
+    # discretization continous variables in training set
     dis_vals = dict([
                      (c,dict([ 
                               (k,tuple([int((x-min_max[k][0])/bin_size[k]) for x in xs ]) ) 
-                              for k,xs in attr.items() 
+                              for k,xs in inner_attr.items() 
                              ]) )
-                     for c, attr in vals_c.items()
+                     for c, inner_attr in vals_c.items()
                    ])
+    # discretization continous variables in test set
+    dis_attributes = dict([ (k, int((x-min_max[k][0])/bin_size[k])) for k,x in attributes.items() ])
     # computing the log posterior
     p_priori = dict([
                      (c, log(p) + sum([ log((dis_vals[c][k].count(x)+1)/float(len(dis_vals[c][k])+bins))
-                                           for k,x in attributes.items()]))
+                                           for k,x in dis_attributes.items()]))
                      for c,p in priori.items()
                     ])
     # switching keys with values and values with keys
@@ -457,7 +462,7 @@ def n_bayes_gauss(tch, train_s, attributes=None):
             priori[t_opt_ch] = priori.get(t_opt_ch) + 1
         #collecting values for var and mean to gausian, for each class
         vals_c[t_opt_ch] = dict( [ ( k,vals_c[t_opt_ch].get(k) + tuple([t.get(k)]) ) for k in attributes ] )
-    #print "vals_c: \n", vals_c
+
     priori = dict([ ( c, priori.get(c)/float(len(ch_train)) ) for c in priori ])
     # means and variances for every class and every variable
     means_vars = dict([ ( cs,
@@ -496,7 +501,7 @@ def g(m_v, x):
 # log_g(m_v, x):						#
 #  - m_v - tuple containing mean and variance			#
 #  - x - varialbe x						#
-# returns the log(f(x;m,v)) = -=.5log(2*pi*v) - (x-m)^2/(2*v)	#
+# returns the log(f(x;m,v)) = .5log(2*pi*v) - (x-m)^2/(2*v)	#
 #								#
 #################################################################
 
