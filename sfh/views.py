@@ -277,11 +277,13 @@ def cross(request):
     # attributes/features that charaterize the link
     KEYS = [ 'other_noise', 'other_rssi', 'other_snr', 
              'self_noise',  'self_snr',   'self_rssi', 
-             'throughput', 'tide_level' ]
+             'throughput' ]
     # getting all possible features combinations 
     combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
     #flatting the list of lists of tuples to list of tuples
     all_keys_combinations = [ item for sublist in combs for item in sublist ] 
+    all_keys_combinations = [ k + ('tide_level',) for k in all_keys_combinations ]
+    all_keys_combinations.insert(0,('tide_level',) )
     #all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
     out = []
     all_train = Train.objects.values()
@@ -291,12 +293,12 @@ def cross(request):
         if 'nbs' in data:
             nbs = int(data.get('nbs'))
         else:
-            nbs = 3
+            nbs = int(sqrt(len(all_train)))
         # number of bins for discretization
         if 'bins' in data:
             bins = int(data.get('bins'))
         else:
-            bins = 50
+            bins = 10
         # number of folds in k-fold cross validation
         if 'k' in data:
             k = int(data.get('k'))
@@ -339,16 +341,16 @@ def cross(request):
                     attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
 
                     # measuring the time and accuracy of knn classifier
-#                    start = time()
-#                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-#                        correctKNN += 1
-#                    elapsedKNN += (time() - start)
+                    start = time()
+                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+                        correctKNN += 1
+                    elapsedKNN += (time() - start)
                     
                     # measuring the time and accuracy of Discretize Naive Bayes classifier
-                    start = time()
-                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
-                        correctNBB += 1
-                    elapsedNBB += (time() - start)
+#                    start = time()
+#                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
+#                        correctNBB += 1
+#                    elapsedNBB += (time() - start)
 
                     # measuring the time and accuracy of Continous Naive Bayes classifier
 #                    start = time()
@@ -369,16 +371,16 @@ def cross(request):
                 total_elapsedNBG += elapsedNBG
                 total_elapsedKNN += elapsedKNN
             # adding final results to res variable which will be printed in the browser
-#            res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
+            res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
 #            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
-            res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
+#            res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
 
             out.append(res)
 
             # and printing final result to terminal
-#            print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
+            print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
 #            print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
-            print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
+#            print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
 
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
@@ -540,10 +542,12 @@ def knn(tch, train_s, attributes=None, k=3):
         neighbors[dis] = t.get('opt_ch_t_thr')
     neighbors_items = neighbors.items()
     neighbors_items.sort()
+    k_neighbors = neighbors_items[:k]
     # retrieving k nearest neighbors
-    classes = [ neighbors_items[i][1] for i in range(k) ]
+    classes = [ k_neighbors[i][1] for i in range(k) ]
     counters = [ classes.count(classes[i]) for i in range(k) ]
     return classes[counters.index(max(counters))]
+    
 
 #################################################################################################
 #												#
