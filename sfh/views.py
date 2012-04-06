@@ -1,6 +1,7 @@
 from django.shortcuts import render_to_response
-from sfh.models import Train, Tide
+from sfh.models import Train, Tide, Channels
 from math import fabs, sqrt, pow, sin, radians, pi, exp, log
+import sys
 import numpy as np
 from random import randint
 import matplotlib.pyplot as plt
@@ -274,17 +275,18 @@ def train(request):
 #########################################################################################
 
 def cross(request):
-    # attributes/features that charaterize the link
-    KEYS = [ 'other_noise', 'other_rssi', 'other_snr', 
-             'self_noise',  'self_snr',   'self_rssi', 
-             'throughput' ]
+    # attributes/features that charaterize the link, testing all possible combinations of them as a features vector
+    #KEYS = [ 'other_noise', 'other_rssi', 'other_snr', 
+    #         'self_noise',  'self_snr',   'self_rssi', 
+    #         'throughput' ]
     # getting all possible features combinations 
-    combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
+    #combs = [ list(combinations(KEYS, i)) for i in range(1,len(KEYS)+1) ]
     #flatting the list of lists of tuples to list of tuples
-    all_keys_combinations = [ item for sublist in combs for item in sublist ] 
-    all_keys_combinations = [ k + ('tide_level',) for k in all_keys_combinations ]
-    all_keys_combinations.insert(0,('tide_level',) )
+    #all_keys_combinations = [ item for sublist in combs for item in sublist ] 
+    #all_keys_combinations = [ k + ('tide_level',) for k in all_keys_combinations ]
+    #all_keys_combinations.insert(0,('tide_level',) )
     #all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
+    #all_keys_combinations = [('throughput')] #just for tests
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
@@ -293,7 +295,7 @@ def cross(request):
         if 'nbs' in data:
             nbs = int(data.get('nbs'))
         else:
-            nbs = int(sqrt(len(all_train)))
+            nbs = 16
         # number of bins for discretization
         if 'bins' in data:
             bins = int(data.get('bins'))
@@ -304,8 +306,8 @@ def cross(request):
             k = int(data.get('k'))
         else:
             k = 10
-        print "NB_b"
-        print "k:", k, " nbs:", nbs, " bins: ", bins
+        res = "knn, weird keys\n" + "k:" + str(k) + " nbs:" + str(nbs) + " bins: " + str(bins) + "\n"
+        print res
         sets = [ [] for i in range(k) ]
         i = 0
         indices = range(len(all_train)) # list of all indecies
@@ -314,73 +316,69 @@ def cross(request):
             sets[i%k].append(all_train[indices.pop(randint(0,len(indices)-1))])
             i += 1
         # checking all keys/attributes from all_keys_combination list
-        for keys in all_keys_combinations:
-            total = 0
-            total_correctKNN = 0
-            total_correctNBB = 0
-            total_correctNBG = 0
-            total_elapsedKNN = 0
-            total_elapsedNBB = 0
-            total_elapsedNBG = 0
-            res = str(all_keys_combinations.index(keys)+1) + " keys: " + str(keys)
-            print res
-            # for all the fold in k-fold cross validation
-            for i in range(k):
-                # making a training set - merging other, not testing folds
-                train_s = []
-                [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
-                correctKNN = 0
-                correctNBB = 0
-                correctNBG = 0
-                elapsedKNN = 0
-                elapsedNBB = 0
-                elapsedNBG = 0
-
-                for test in sets[i]:
-                    # using only the attributes/features specified in all_keys_combinations list 
-                    attributes = dict([ [x,y] for (x,y) in test.items() if x in keys ])
-
-                    # measuring the time and accuracy of knn classifier
-                    start = time()
-                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                        correctKNN += 1
-                    elapsedKNN += (time() - start)
+        total = 0
+        total_correctKNN = 0
+        total_correctNBB = 0
+        total_correctNBG = 0
+        total_elapsedKNN = 0
+        total_elapsedNBB = 0
+        total_elapsedNBG = 0
+        # for all the fold in k-fold cross validation
+        for i in range(k):
+            # making a training set - merging other, not testing folds
+            train_s = []
+            [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
+            correctKNN = 0
+            correctNBB = 0
+            correctNBG = 0
+            elapsedKNN = 0
+            elapsedNBB = 0
+            elapsedNBG = 0
+            for test in sets[i]:
+#                keys = Channels.objects.get(channel=test.get('transmitting_channel')).features
+                keys = ['tide_level', 'throughput']
+                attributes = dict([ [x,y] for (x,y) in test.items() if x in keys and not x in "id" ])
+                # measuring the time and accuracy of knn classifier
+                start = time()
+                if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+                    correctKNN += 1
+                elapsedKNN += (time() - start)
                     
-                    # measuring the time and accuracy of Discretize Naive Bayes classifier
-#                    start = time()
-#                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
-#                        correctNBB += 1
-#                    elapsedNBB += (time() - start)
+                # measuring the time and accuracy of Discretize Naive Bayes classifier
+#                start = time()
+#                if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
+#                    correctNBB += 1
+#                elapsedNBB += (time() - start)
 
-                    # measuring the time and accuracy of Continous Naive Bayes classifier
-#                    start = time()
-#                    if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
-#                        correctNBG += 1
-#                    elapsedNBG += (time() - start)
+                # measuring the time and accuracy of Continous Naive Bayes classifier
+#                start = time()
+#                if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
+#                    correctNBG += 1
+#                elapsedNBG += (time() - start)
                     
                 #printing the results for each fold
-#                print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
-#                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
-#                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
+            print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
+#            print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
+#            print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
 
-                total += len(sets[i])
-                total_correctKNN += correctKNN
-                total_correctNBG += correctNBG
-                total_correctNBB += correctNBB
-                total_elapsedNBB += elapsedNBB
-                total_elapsedNBG += elapsedNBG
-                total_elapsedKNN += elapsedKNN
+            total += len(sets[i])
+            total_correctKNN += correctKNN
+            total_correctNBG += correctNBG
+            total_correctNBB += correctNBB
+            total_elapsedNBB += elapsedNBB
+            total_elapsedNBG += elapsedNBG
+            total_elapsedKNN += elapsedKNN
             # adding final results to res variable which will be printed in the browser
-            res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
-#            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
-#            res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
+        res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
+#        res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
+#        res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
 
-            out.append(res)
+        out.append(res)
 
-            # and printing final result to terminal
-            print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
-#            print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
-#            print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
+       # and printing final result to terminal
+        print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
+#        print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
+#        print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
 
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
@@ -527,9 +525,11 @@ def log_g(m_v, x):
 #												#
 #################################################################################################
 
-def knn(tch, train_s, attributes=None, k=3):
+def knn(tch, train_s, attributes=None, k=None):
     neighbors = dict()
     ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
+    if not k:
+        k = int(sqrt(len(ch_train)))
     # list of all features to a X to be classify
     c_x=attributes.values()
     for t in ch_train:
@@ -537,7 +537,7 @@ def knn(tch, train_s, attributes=None, k=3):
         dis = dist(t_x,c_x)
         # adding small, insignificat distance to ensure that no previous value was replaced
         while(neighbors.has_key(dis)):
-            dis += 0.000000001
+            dis += sys.float_info.min
         # storing the all the distances and optimals channel in dictionary
         neighbors[dis] = t.get('opt_ch_t_thr')
     neighbors_items = neighbors.items()
@@ -827,13 +827,21 @@ def graph(request):
 #################################################################################
 
 def pearson(request):
+
+    data=request.GET
+    # numbr of negihbors to consider
+    if 'set' in data:
+        set = int(data.get('set'))
+    else:
+        set = None
+
     multi_all_channels = Train.objects.values('transmitting_channel').order_by('transmitting_channel').distinct()
     CHANNELS = [ t.get('transmitting_channel') for t in multi_all_channels ]
 #    for t in multi_all_channels:
 #        if not t.get('transmitting_channel') in CHANNELS:
 #            CHANNELS.append(t.get('transmitting_channel'))
 
-    print CHANNELS
+#    print CHANNELS
     all_train_s = Train.objects.values()
     slot_ch = []
     slot = []
@@ -848,121 +856,159 @@ def pearson(request):
             for ch1 in CHANNELS:
                 for ch2 in CHANNELS:
                     if ch1 in slot_ch and ch2 in slot_ch:
-                        for t in slot:
-                            if t.get('transmitting_channel') == ch1:
-                                x = t
-                            if t.get('transmitting_channel') == ch2:
-                                y = t
+                        for tt in slot:
+                            if tt.get('transmitting_channel') == ch1:
+                                x = tt
+                            if tt.get('transmitting_channel') == ch2:
+                                y = tt
                         values[CHANNELS.index(ch1)*len(CHANNELS)+CHANNELS.index(ch2)].append({'x':x, 'y':y})
             slot_ch = [t.get('transmitting_channel')]
             slot = [t]
+    pearson = dict()
 
-    pearson_thr = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_osnr = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_ssnr = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_srssi = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_orssi = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_onoise = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
-    pearson_snoise = [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['throughput'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['other_snr'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['self_snr'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['other_noise'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['self_noise'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['other_rssi'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['self_rssi'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
+    pearson['tide_level'] =  [ [] for c1 in CHANNELS for c2 in CHANNELS ]
 
     for i in range(len(values)):
         n = len(values[i])
+        # pearson tlevel
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('tide_level') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('tide_level') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('tide_level'),2) for v in values[i] ])
+        pearson['tide_level'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
+        # pearson self snr
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('self_snr') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('self_snr') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('self_snr'),2) for v in values[i] ])
+        pearson['self_snr'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
+        #pearson self noise
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('self_noise') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('self_noise') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('self_noise'),2) for v in values[i] ])
+        pearson['self_noise'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
+        #pearson self rssi
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('self_rssi') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('self_rssi') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('self_rssi'),2) for v in values[i] ])
+        pearson['self_rssi'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
         # pearson throughput
         sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('throughput') for v in values[i] ])
         sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
         sumy = sum([ v.get('y').get('throughput') for v in values[i] ])
         sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
         sumy2 = sum([ pow(v.get('y').get('throughput'),2) for v in values[i] ])
-        pearson_thr[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
-        #pearson self SNR
-        sumxy = sum([ v.get('x').get('selfSNR') * v.get('y').get('selfSNR') for v in values[i] ])
-        sumx = sum([ v.get('x').get('selfSNR') for v in values[i] ])
-        sumy = sum([ v.get('y').get('selfSNR') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('selfSNR'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('selfSNR'),2) for v in values[i] ])
-        pearson_ssnr[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
-        #pearson self RSSI
-        sumxy = sum([ v.get('x').get('self_rssi') * v.get('y').get('self_rssi') for v in values[i] ])
-        sumx = sum([ v.get('x').get('self_rssi') for v in values[i] ])
-        sumy = sum([ v.get('y').get('self_rssi') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('self_rssi'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('self_rssi'),2) for v in values[i] ])
-        pearson_srssi[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
+        pearson['throughput'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)) )
         #pearson other SNR
-        sumxy = sum([ v.get('x').get('otherSNR') * v.get('y').get('otherSNR') for v in values[i] ])
-        sumx = sum([ v.get('x').get('otherSNR') for v in values[i] ])
-        sumy = sum([ v.get('y').get('otherSNR') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('otherSNR'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('otherSNR'),2) for v in values[i] ])
-        pearson_osnr[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('other_snr') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('other_snr') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('other_snr'),2) for v in values[i] ])
+        pearson['other_snr'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
         #pearson other RSSI
-        sumxy = sum([ v.get('x').get('other_rssi') * v.get('y').get('other_rssi') for v in values[i] ])
-        sumx = sum([ v.get('x').get('other_rssi') for v in values[i] ])
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('other_rssi') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
         sumy = sum([ v.get('y').get('other_rssi') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('other_rssi'),2) for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
         sumy2 = sum([ pow(v.get('y').get('other_rssi'),2) for v in values[i] ])
-        pearson_orssi[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
-        #pearson other noise to throughput
-        sumxy = sum([v.get('x').get('other_noise') * v.get('y').get('throughput') for v in values[i] ])
-        sumx = sum([ v.get('x').get('other_noise') for v in values[i] ])
-        sumy = sum([ v.get('y').get('throughput') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('other_noise'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('throughput'),2) for v in values[i] ])
-        pearson_onoise[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
+        pearson['other_rssi'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
+        #pearson other noise
+        sumxy = sum([ v.get('x').get('throughput') * v.get('y').get('other_noise') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('other_noise') for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('other_noise'),2) for v in values[i] ])
+        pearson['other_noise'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
  
         #pearson self noise to throughput
-        sumxy = sum([v.get('x').get('self_noise') * v.get('y').get('throughput') for v in values[i] ])
-        sumx = sum([ v.get('x').get('self_noise') for v in values[i] ])
-        sumy = sum([ v.get('y').get('throughput') for v in values[i] ])
-        sumx2 = sum([ pow(v.get('x').get('self_noise'),2) for v in values[i] ])
-        sumy2 = sum([ pow(v.get('y').get('throughput'),2) for v in values[i] ])
-        pearson_snoise[i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
-  
-    STR = ""
-    for i in range(len(pearson_thr)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_thr[i],3)) + "\t"
-    print "Pearson for throughput:" + STR
-    STR = ""
-    for i in range(len(pearson_ssnr)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_ssnr[i],3)) + "\t"
-    print "Pearson for self SNR:" + STR
-    STR = ""
-    for i in range(len(pearson_srssi)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_srssi[i],3)) + "\t"
-    print "Pearson for self RSSI:" + STR
+        sumxy = sum([v.get('y').get('self_noise') * v.get('x').get('throughput') for v in values[i] ])
+        sumy = sum([ v.get('y').get('self_noise') for v in values[i] ])
+        sumx = sum([ v.get('x').get('throughput') for v in values[i] ])
+        sumy2 = sum([ pow(v.get('y').get('self_noise'),2) for v in values[i] ])
+        sumx2 = sum([ pow(v.get('x').get('throughput'),2) for v in values[i] ])
+        pearson['self_noise'][i] = (sumxy - ((sumx*sumy)/n)) / sqrt( (sumx2 - (pow(sumx,2)/n)) * (sumy2 - (pow(sumy,2)/n)))
 
-    STR = ""
-    for i in range(len(pearson_osnr)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_osnr[i],3)) + "\t"
-    print "Pearson for other SNR:" + STR
-    STR = ""
-    for i in range(len(pearson_orssi)):
-        if i % len(CHANNELS) == 0:
-            STR += '\n'
-        STR += str(round(pearson_orssi[i],3)) + "\t"
-    print "Pearson for other RSSI:" + STR
+    result = ["check the source!"]
 
-    STR = ""
-    for i in range(len(pearson_onoise)):
+    STR = "Pearson for throughput:"
+    for i in range(len(pearson['throughput'])):
         if i % len(CHANNELS) == 0:
             STR += '\n'
-        STR += str(round(pearson_onoise[i],3)) + "\t"
-    print "Pearson for other noise/throughput:" + STR    
-
-    STR = ""
-    for i in range(len(pearson_snoise)):
+        STR += str(round(pearson['throughput'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for self SNR:"
+    for i in range(len(pearson['self_snr'])):
         if i % len(CHANNELS) == 0:
             STR += '\n'
-        STR += str(round(pearson_snoise[i],3)) + "\t"
-    print "Pearson for self noise/throughput:" + STR
+        STR += str(round(pearson['self_snr'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for self RSSI:"
+    for i in range(len(pearson['self_rssi'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['self_rssi'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for other SNR:"
+    for i in range(len(pearson['other_snr'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['other_snr'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for other RSSI:"
+    for i in range(len(pearson['other_rssi'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['other_rssi'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for other noise/throughput:"
+    for i in range(len(pearson['other_noise'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['other_noise'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for self noise/throughput:"
+    for i in range(len(pearson['self_noise'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['self_noise'][i],3)) + "\t"
+    result.append(STR)
+    STR = "Pearson for tide_level/throughput:"
+    for i in range(len(pearson['tide_level'])):
+        if i % len(CHANNELS) == 0:
+            STR += '\n'
+        STR += str(round(pearson['tide_level'][i],3)) + "\t"
+    result.append(STR)
+#    print result
+    #return the list of keys that have strong correlation coefficient
+    if set:
+        chs = Channels.objects.all()
+        for ch in CHANNELS:
+            index = CHANNELS.index(ch)*len(CHANNELS)+CHANNELS.index(ch)
+            keys = "tide_level"
+            for key,pear in pearson.items():
+                if fabs(pear[index]) >= 0.60 and not key in "tide_level":
+                    keys+=key
+            print ch, ": ", keys
+            if chs.filter(channel=ch):
+                c = chs.get(channel=ch)
+                c.feature = keys
+            else:
+                c = Channels(channel=ch, features=keys)
+            c.save()
 
-    return render_to_response('sfh/index.html')
+    return render_to_response('sfh/show.html', {'train_s' : result})
 

@@ -100,3 +100,7 @@ class Tide(models.Model):
     # define the default ordering when retrieving the entries
     class Meta:
         ordering = ['timestamp']
+longest="transmitting_channelself_rssiself_snrself_noiseother_rssiother_noiseother_snrthroughputtide_level"
+class Channels(models.Model):
+    channel = models.FloatField(unique=True)
+    features = models.CharField(max_length=len(longest))

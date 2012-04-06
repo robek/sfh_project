@@ -2,8 +2,8 @@ import calendar
 import urllib
 import time
 
-start=1330014051
-end=1330276609
+start=1329959160
+end=1330287720
 timestamp_tide = []
 while start <= end:
     t_time = time.gmtime(start)
