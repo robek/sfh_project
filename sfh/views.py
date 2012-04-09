@@ -285,8 +285,18 @@ def cross(request):
     #all_keys_combinations = [ item for sublist in combs for item in sublist ] 
     #all_keys_combinations = [ k + ('tide_level',) for k in all_keys_combinations ]
     #all_keys_combinations.insert(0,('tide_level',) )
-    #all_keys_combinations = [('throughput'),('tide_level'), ('tide_level', 'throughput')] #just for tests
-    #all_keys_combinations = [('throughput')] #just for tests
+#    all_keys_combinations = [('tide_level'), ('tide_level', 'throughput'),('other_noise', 'tide_level'),
+#                             ('self_noise', 'tide_level') ] #just for tests
+    all_keys_combinations = [#('throughput'),
+                             ('tide_level', 'self_noise')]#,
+#                             ('throughput', 'tide_level', 'self_noise'),
+#                             ('throughput', 'tide_level', 'self_noise', 'other_noise'),
+#                             ('throughput', 'tide_level', 'self_noise', 'other_noise', 'self_snr'),
+#                             ('throughput', 'tide_level', 'self_noise', 'other_noise', 'self_snr', 'other_snr'),
+#                             ('throughput', 'tide_level', 'self_noise', 'other_noise', 'self_snr', 'other_snr', 'self_rssi'),
+#                             ('throughput', 'tide_level', 'self_noise', 'other_noise', 'self_snr', 'other_snr', 'self_rssi', 'other_rssi')] # more tests
+
+
     out = []
     all_train = Train.objects.values()
     if request.method == 'GET':
@@ -302,12 +312,13 @@ def cross(request):
         else:
             bins = 10
         # number of folds in k-fold cross validation
-        if 'k' in data:
-            k = int(data.get('k'))
+        if 'folds' in data:
+            k = int(data.get('folds'))
         else:
             k = 10
-        res = "knn, weird keys\n" + "k:" + str(k) + " nbs:" + str(nbs) + " bins: " + str(bins) + "\n"
+        res = "pearson knn "  + "folds:" + str(k) + " nbs:" + str(nbs) + " bins: " + str(bins) + "\n"
         print res
+        out.append(res)
         sets = [ [] for i in range(k) ]
         i = 0
         indices = range(len(all_train)) # list of all indecies
@@ -316,69 +327,71 @@ def cross(request):
             sets[i%k].append(all_train[indices.pop(randint(0,len(indices)-1))])
             i += 1
         # checking all keys/attributes from all_keys_combination list
-        total = 0
-        total_correctKNN = 0
-        total_correctNBB = 0
-        total_correctNBG = 0
-        total_elapsedKNN = 0
-        total_elapsedNBB = 0
-        total_elapsedNBG = 0
         # for all the fold in k-fold cross validation
-        for i in range(k):
+        for keys in all_keys_combinations:
+            print (all_keys_combinations.index(keys)+1), " keys: ", keys
+            res = ""
+            total = 0
+            total_correctKNN = 0
+            total_correctNBB = 0
+            total_correctNBG = 0
+            total_elapsedKNN = 0
+            total_elapsedNBB = 0
+            total_elapsedNBG = 0
+            for i in range(k):
             # making a training set - merging other, not testing folds
-            train_s = []
-            [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
-            correctKNN = 0
-            correctNBB = 0
-            correctNBG = 0
-            elapsedKNN = 0
-            elapsedNBB = 0
-            elapsedNBG = 0
-            for test in sets[i]:
-#                keys = Channels.objects.get(channel=test.get('transmitting_channel')).features
-                keys = ['tide_level', 'throughput']
-                attributes = dict([ [x,y] for (x,y) in test.items() if x in keys and not x in "id" ])
+                train_s = []
+                [ train_s.extend(x) for x in sets if not sets.index(x) == i ]
+                correctKNN = 0
+                correctNBB = 0
+                correctNBG = 0
+                elapsedKNN = 0
+                elapsedNBB = 0
+                elapsedNBG = 0
+                for test in sets[i]:
+                #keys = Channels.objects.get(channel=test.get('transmitting_channel')).features
+                    attributes = dict([ [x,y] for (x,y) in test.items() if x in keys and not x in "id" ])
                 # measuring the time and accuracy of knn classifier
-                start = time()
-                if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
-                    correctKNN += 1
-                elapsedKNN += (time() - start)
+#                    start = time()
+#                    if test.get('opt_ch_t_thr') == knn(test.get('transmitting_channel'), train_s, attributes, nbs):
+#                        correctKNN += 1
+#                    elapsedKNN += (time() - start)
                     
                 # measuring the time and accuracy of Discretize Naive Bayes classifier
-#                start = time()
-#                if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
-#                    correctNBB += 1
-#                elapsedNBB += (time() - start)
+                    start = time()
+                    if test.get('opt_ch_t_thr') == n_bayes_bins(test.get('transmitting_channel'), train_s, attributes, bins):
+                        correctNBB += 1
+                    elapsedNBB += (time() - start)
 
                 # measuring the time and accuracy of Continous Naive Bayes classifier
-#                start = time()
-#                if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
-#                    correctNBG += 1
-#                elapsedNBG += (time() - start)
+#                    start = time()
+#                    if test.get('opt_ch_t_thr') == n_bayes_gauss(test.get('transmitting_channel'), train_s, attributes):
+#                        correctNBG += 1
+#                    elapsedNBG += (time() - start)
                     
                 #printing the results for each fold
-            print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
-#            print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
-#            print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
+#                print i,"- knn accuracy:\t", correctKNN/float(len(sets[i])), " time: ", elapsedKNN
+#                print i,"- nb-gauss accuracy:\t", correctNBG/float(len(sets[i])), " time: ", elapsedNBG
+                print i,"- nb-bins accuracy:\t", correctNBB/float(len(sets[i])), " time: ", elapsedNBB
 
-            total += len(sets[i])
-            total_correctKNN += correctKNN
-            total_correctNBG += correctNBG
-            total_correctNBB += correctNBB
-            total_elapsedNBB += elapsedNBB
-            total_elapsedNBG += elapsedNBG
-            total_elapsedKNN += elapsedKNN
+                total += len(sets[i])
+                total_correctKNN += correctKNN
+                total_correctNBG += correctNBG
+                total_correctNBB += correctNBB
+                total_elapsedNBB += elapsedNBB
+                total_elapsedNBG += elapsedNBG
+                total_elapsedKNN += elapsedKNN
             # adding final results to res variable which will be printed in the browser
-        res += " knn accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k))
-#        res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
-#        res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
+#            res += str(keys) + " accuracy: " + str(total_correctKNN/float(total)) + " avg time per fold: " + str(total_elapsedKNN/float(k)) + "\n"
+#            res += " nb_gauss accuracy: " + str(total_correctNBG/float(total)) + " avg time per fold: " + str(total_elapsedNBG/float(k))
+            res += " nb_bins accuracy: " + str(total_correctNBB/float(total)) + " avg time per fold: " + str(total_elapsedNBB/float(k))
 
-        out.append(res)
+            out.append(res)
 
        # and printing final result to terminal
-        print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
-#        print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
-#        print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
+#            print "knn accuracy: ", total_correctKNN/float(total), " avg time per fold: ", total_elapsedKNN/float(k) 
+#            print "nb_gauss accuracy: ", total_correctNBG/float(total), "avg time per fold: ", total_elapsedNBG/float(k)
+            print "nb_bins accuracy: ", total_correctNBB/float(total), "avg time per fold: ", total_elapsedNBB/float(k)
 
     return render_to_response('sfh/show.html', { 'train_s' : out })
 
@@ -543,7 +556,7 @@ def knn(tch, train_s, attributes=None, k=None):
     neighbors_items = neighbors.items()
     neighbors_items.sort()
     k_neighbors = neighbors_items[:k]
-    # retrieving k nearest neighbors
+    # retrieving k nearest neighbors classes
     classes = [ k_neighbors[i][1] for i in range(k) ]
     counters = [ classes.count(classes[i]) for i in range(k) ]
     return classes[counters.index(max(counters))]
@@ -831,9 +844,9 @@ def pearson(request):
     data=request.GET
     # numbr of negihbors to consider
     if 'set' in data:
-        set = int(data.get('set'))
+        set = True
     else:
-        set = None
+        set = False
 
     multi_all_channels = Train.objects.values('transmitting_channel').order_by('transmitting_channel').distinct()
     CHANNELS = [ t.get('transmitting_channel') for t in multi_all_channels ]
