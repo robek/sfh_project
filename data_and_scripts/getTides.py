@@ -2,8 +2,8 @@ import calendar
 import urllib
 import time
 
-start=1329959160
-end=1330287720
+start=1332344158-(86400/2) # to ensure that both ends are being sent
+end=1332572919+(86400/2)   # same
 timestamp_tide = []
 while start <= end:
     t_time = time.gmtime(start)
@@ -11,7 +11,8 @@ while start <= end:
         date_to_url = str(t_time.tm_year)+str(t_time.tm_mon)+str(t_time.tm_mday)
     else:
         date_to_url = str(t_time.tm_year)+str(0)+str(t_time.tm_mon)+str(t_time.tm_mday)
-    url = "http://www.tidetimes.org.uk/mallaig-tide-times-" + date_to_url
+#    url = "http://www.tidetimes.org.uk/mallaig-tide-times-" + date_to_url
+    url = "http://www.tidetimes.org.uk/loch-hourn-tide-times-" + date_to_url
     print url
     f = urllib.urlopen(url)
     page = f.readlines()
@@ -37,9 +38,9 @@ while start <= end:
                    for l in info 
                 ]
     time_string = str(t_time.tm_mday) + " " + str(t_time.tm_mon) + " " + str(t_time.tm_year) + " "
-    timestamp_tide.extend([ (calendar.timegm(time.strptime(time_string + str(ctime), "%d %m %Y %H:%M")), tide)
-                          for ctime,tide in HM_tide ])
+    timestamp_tide.extend([ (calendar.timegm(time.strptime(time_string + str(ctime), "%d %m %Y %H:%M")), 
+                             float(tide)) for ctime,tide in HM_tide ])
     start += 86400
 
 for timestamp, tide in timestamp_tide:
-    print timestamp, tide
+    print timestamp, int(tide*100)

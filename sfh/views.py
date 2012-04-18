@@ -537,7 +537,7 @@ def knn(tch, train_s, attributes=None, k=None):
         dis = dist(t_x,c_x)
         # adding small, insignificat distance to ensure that no previous value was replaced
         while(neighbors.has_key(dis)):
-            dis += sys.float_info.min
+            dis += 0.0000000001
         # storing the all the distances and optimals channel in dictionary
         neighbors[dis] = t.get('opt_ch_t_thr')
     neighbors_items = neighbors.items()
