@@ -1,0 +1,16 @@
+Folders:
+data_and_scripts - contains some data gathered from links and scripts used to 
+	preprocess and send those data to the app.
+sfh - contains python files used by the app
+sfh/templates - html files used to render the results to the browser
+
+Details about the specific source and scripts files are in each folder.
+
+To run the app type
+
+python manage.py syncdb - makes the *.db file, the database files
+python manage.py runserver [PORT] - runs the server on the PORT. Default port 
+	is 8000
+
+The available HTTP requests are in the urls.py file
+

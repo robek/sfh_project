@@ -407,7 +407,7 @@ def cross(request):
 #										#
 #################################################################################
 
-def n_bayes_bins(tch, train_s, attributes=None, bins=100):
+def n_bayes_bins(tch, train_s, attributes=None, bins=10):
     priori = dict()
     vals_c = dict()
     #check only the same transmitting channel
@@ -538,7 +538,7 @@ def log_g(m_v, x):
 #												#
 #################################################################################################
 
-def knn(tch, train_s, attributes=None, k=None):
+def knn(tch, train_s, attributes=None, k):
     neighbors = dict()
     ch_train = [ t for t in train_s if t.get('transmitting_channel') == float(tch) ]
     if not k:

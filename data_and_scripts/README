@@ -1,0 +1,11 @@
+Scripts:
+	- getTides.py - downloads the tide level information from www.tidetimes.org.uk. In the code specify the start timestamp, 
+			end timestamp and the tidal prediction location(Mallaig or Loch Hourn)
+
+	- awka.sh LINK TIDE - the script that takes two arguments:
+		- LINK - the raw file describing the link
+		- TIDE - the output of the getTides.py script(without the urls)
+		In the code specify the HOST(with port)
+		Returns 2 files send_link.data and send_tide.data. (remove manually the first line from send_link.data)
+
+	- send_data.sh FILE - using the wget program sends the data from FILE(should be either send_link.data or send_tide.data)

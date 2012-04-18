@@ -1,0 +1,78 @@
+Files:
+ - models.py - the file contains the source which creates the database tables and one overridden save() method which filters the 
+	input data so the 0 entries are discarded
+ - views.py - the file contains methods used when specific HTTP request is used. 
+	The available methods are:
+		i)
+			index(request) : - when given the information about the current state of the link returns the optimal channel
+				to switch
+		ii)
+			data(request) : - receives the data informing about the state of the link and stores it in the db. The data 
+				should be send in the GET request, ie.:
+
+		HOST:PORT/data?ts=TIMESTAMP&tch=TRANSMITTING_CHANNEL&thr=THROUGHPUT&ssnr=SELF_SNR&snoise=SELF_NOISE&
+			osnr=OTHER_SNR&onoise=OTHER_NOISE
+
+		iii)
+			tide(request) : - receives the data informing about the tide level and stores it in the db. The data should 
+				be send in the GET request, ie.:
+
+		HOST:PORT/tide?ts=TIMESTAMP&tide=TIDE_LEVEL_IN_CM
+
+		iv)
+			mix(request) : - for every entry in Train table(the table with link information), interpolates the adequate
+				tide level. Use only after data() and tide() requests and ensure that there the Tide table(table used 
+				for storing the tide levels downloaded from www.tidetimes.org.uk) is big enough
+
+		v)
+			train(request) : - labels every entry from the Train table(the table with link information) with the optimal_channel
+
+		vi)
+			cross(request) : - performs the k-fold cross validation on the system. The optional GET parameters are:
+		HOST:PORT/cross?nbs=NUMBER_OF_NEIGHBOURS&bins=NUMBER_OF_BINS_USED_IN_DISCRETIZATION&folds=NUMBER_OF_FOLDS
+		by default nbs=16, bins=10, k=10. Additionally, in the code you have to specify the features vector and the classifier 
+		to be used(uncomment/comment the right piece of code).
+
+		vii)
+			n_bayes_bins(tch, train_s, attributes, bins) : performs the discrete Naive Bayes classification on the 
+			test point. Arguments are:
+			- tch - transmitting channel
+			- attributes - features vector
+			- train_s - training set
+			- bins - number of bins used in discretization
+			Returs the optimal channel to switch
+
+		viii)
+			n_bayes_gauss(tch, train_s, attributes) : - performs the Naive Bayes classification on the test point using the
+			continous values. Arguments are:
+			tch - trasmittin channel
+			attributes - features vector
+			train_s - training set 
+			The compute the log-likelihoods it uses the log_g which given the test point and (mean,variance) tuple computes
+			the log of Normal distribution.
+			n_bayes_gauss Returs the optimal channel to switch
+			
+		ix)
+			knn(tch, train_s, attributes, k) : - performs the k-Nearest Neighbours classification on the new test point.
+			The arguments are:
+			tch - transmitting channel
+			attributes - features vector
+			train_s - training set
+			k - number of neighbours to look at
+			The distance is measured by using the Euclidean metric. The method returns the optimal channel to switch.
+
+		x) 
+			show(request) : - renders the whole Train table to the browser
+
+		xi)
+			graph(request) : - makes some figures describing the link. The result figures will be saved in the 
+			root folder of the app(ie. sfh_project/)
+			
+		xii)
+			pearson(request) : - computes the pearson correlation coefficient for all used transmitting channels
+			The output is rendered to the server console and to the browser. When the request is send with the GET request:
+			
+			HOST:PORT/pearson?set=ANYTHING
+
+			the features that are strongly correlated with the throughput are stored in the Channels table(db).
+			
